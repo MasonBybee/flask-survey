@@ -1,4 +1,4 @@
-from flask import Flask, request, redirect, render_template, flash
+from flask import Flask, request, redirect, render_template, flash, session
 from flask_debugtoolbar import DebugToolbarExtension
 from surveys import satisfaction_survey
 
@@ -9,7 +9,6 @@ app.debug = True
 toolbar = DebugToolbarExtension(app)
 app.config['DEBUG_TB_INTERCEPT_REDIRECTS']= False
 
-responses = []
 
 @app.route('/')
 def home():
@@ -19,27 +18,38 @@ def home():
 
 @app.route('/questions/<num>')
 def survey_questions(num):
-    numQ = len(responses)
-    if numQ != int(num):
+    if "responses" not in session:
+        flash('Please hit start survey to begin')
+        return redirect('/')
+    num = int(num)
+    if num != len(session["responses"]):
         flash('Unauthorized access to this page please complete the survey')
-    if numQ == len(satisfaction_survey.questions):
-        print(responses)
+        return redirect(f'/questions/{len(session["responses"])}')
+    if num == len(satisfaction_survey.questions):
         return redirect('/thankyou')
-    return render_template('questions.html', num=numQ, question = satisfaction_survey.questions[numQ])
+    return render_template('questions.html', num=num, question = satisfaction_survey.questions[num])
 
 @app.route('/answer', methods=["POST"])
 def submit_answer():
-    answer = request.form['answer']
-    print(answer)
-    responses.append(answer)
+    res = request.form['answer']
+    responses = session["responses"]
+    responses.append(res)
+    session["responses"] = responses
     if len(responses) == len(satisfaction_survey.questions):
-        print(responses)
         return redirect('/thankyou')
     return redirect(f"/questions/{len(responses)}")
 
 @app.route('/thankyou')
 def thankyou_page():
-    if len(responses) != len(satisfaction_survey.questions):
-        flash('Unauthorized access to this page please complete the survey')
-        return redirect(f"/questions/{len(responses)}")
+    responses = session.get("responses", [])
+    if not responses or len(responses) != len(satisfaction_survey.questions):
+        flash('Unauthorized access to this page. Please complete the survey.')
+        next_question = 0 if not responses else len(responses)
+        return redirect(f"/questions/{next_question}")
+    
     return render_template('thankyou.html')
+
+@app.route('/startsurvey', methods=["POST"])
+def start_survey():
+    session['responses'] = []
+    return redirect(f'/questions/{len(session["responses"])}')
